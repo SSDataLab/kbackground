@@ -15,14 +15,8 @@ To use `kbackground`, you can create an object using row, column and flux values
 
 ```python
 from kbackground import Estimator
-e = Estimator(row, column, flux)
-bkg_model = e.model()
+e = Estimator(time, row, column, flux)
+bkg_model = e.model
 ```
 
 `bkg_model` will be a 2D array with the same shape as `flux`.
-
-If you want a single frame, or set of frames, you can use:
-
-```python
-e.model(frame_index)
-```
