@@ -6,7 +6,7 @@ from kbackground import Estimator, __version__
 
 
 def test_version():
-    assert __version__ == "0.1.6"
+    assert __version__ == "0.1.7"
 
 
 def test_kbackground():
