@@ -22,36 +22,46 @@ class Estimator:
         1D array of column positions for pixels to calculate the background model of with shape npixels
     flux : np.ndarray
         2D array of fluxes with shape ntimes x npixels
+    tknotspacing: int
+        Spacing in cadences between time knots. Default is 15
+    xknotspacing: int
+        Spacing in pixels between row knots. Default is 60
     """
 
     time: np.ndarray
     row: np.ndarray
     column: np.ndarray
     flux: np.ndarray
+    tknotspacing: int = 10
+    xknotspacing: int = 50
 
     def __post_init__(self):
         s = np.argsort(self.time)
         self.time, self.flux = self.time[s], self.flux[s]
-        self.xknots, self.tknots = (
-            np.linspace(20, 1108, 30)[1:-1],
-            np.linspace(self.time[0], self.time[-1], 240),
-        )
+        self.xknots = np.arange(20, 1108, self.xknotspacing)
+        if np.median(np.diff(self.time)) < 0.03:
+            # Time in JD
+            self.tknots = np.arange(self.time[0], self.time[-1], self.tknotspacing / 48)
+        else:
+            self.tknots = np.arange(self.time[0], self.time[-1], self.tknotspacing)
         med_flux = np.median(self.flux, axis=0)[None, :]
         f = self.flux - med_flux
         # Mask out pixels that are particularly bright.
-        self.mask = (med_flux[0] - np.percentile(med_flux, 20)) < 30
+        self.mask = (f).std(axis=0) < 500
         if not self.mask.any():
-            raise ValueError("All the input pixels are brighter than 30 counts.")
+            raise ValueError("All the input pixels are brighter than 500 counts.")
+        self.mask &= (f).std(axis=0) < 30
+        # self.mask=(med_flux[0] - np.percentile(med_flux, 20)) < 30
         self.mask &= ~sigma_clip(med_flux[0]).mask
         self.mask &= ~sigma_clip(np.std(f, axis=0)).mask
+        self.unq_row = np.unique(self.row[self.mask])
         self.bf = np.asarray(
             [
                 np.median(f[:, self.mask & (self.row == r1)], axis=1)
-                for r1 in np.unique(self.row)
+                for r1 in self.unq_row
             ]
         )
-
-        A1 = self._make_A(np.unique(self.row), self.time)
+        A1 = self._make_A(self.unq_row, self.time)
         self.bad_frames = (
             np.where(np.gradient(np.mean(self.bf, axis=0), axis=0) > 2)[0] + 1
         )
@@ -76,7 +86,9 @@ class Estimator:
         self.w = np.linalg.solve(sigma_w_inv, B)
 
         self._model = self.A.dot(self.w).reshape(self.bf.shape)
-        self.model = self._model[np.unique(self.row, return_inverse=True)[1]].T
+        self.model = np.zeros((self.flux.shape)) * np.nan
+        for idx, u in enumerate(self.unq_row):
+            self.model[:, self.row == u] = self._model[idx][:, None]
 
     @staticmethod
     def from_mission_bkg(fname):
