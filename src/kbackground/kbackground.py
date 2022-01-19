@@ -14,6 +14,8 @@ class Estimator:
     Parameters
     ----------
 
+    time: np.ndarray
+        1D array of times for each frame, shape ntimes
     row: np.ndarray
         1D array of row positions for pixels to calculate the background model of with shape npixels
     column: np.ndarray
@@ -22,14 +24,17 @@ class Estimator:
         2D array of fluxes with shape ntimes x npixels
     """
 
+    time: np.ndarray
     row: np.ndarray
     column: np.ndarray
     flux: np.ndarray
 
     def __post_init__(self):
-        self.xknots, self.yknots = (
-            np.linspace(20, 1108, 62)[1:-1],
-            np.linspace(27, 1040, 8)[1:-1],
+        s = np.argsort(self.time)
+        self.time, self.flux = self.time[s], self.flux[s]
+        self.xknots, self.tknots = (
+            np.linspace(20, 1108, 30)[1:-1],
+            np.linspace(self.time[0], self.time[-1], 240),
         )
         med_flux = np.median(self.flux, axis=0)[None, :]
         f = self.flux - med_flux
@@ -39,27 +44,39 @@ class Estimator:
             raise ValueError("All the input pixels are brighter than 30 counts.")
         self.mask &= ~sigma_clip(med_flux[0]).mask
         self.mask &= ~sigma_clip(np.std(f, axis=0)).mask
+        self.bf = np.asarray(
+            [
+                np.median(f[:, self.mask & (self.row == r1)], axis=1)
+                for r1 in np.unique(self.row)
+            ]
+        )
 
-        self.flux_offset = np.median(f, axis=1)
-
-        self.A = self._make_A(self.row, self.column)
-        prior_mu = np.zeros(self.A.shape[1])
-        prior_mu[0] = 1
-        prior_mu = self.flux_offset[:, None] * prior_mu
-        # Hard coding a prior with 100 count width.
+        A1 = self._make_A(np.unique(self.row), self.time)
+        self.bad_frames = (
+            np.where(np.gradient(np.mean(self.bf, axis=0), axis=0) > 2)[0] + 1
+        )
+        if len(self.bad_frames) > 0:
+            badA = sparse.vstack(
+                [
+                    sparse.csr_matrix(
+                        (
+                            np.in1d(np.arange(len(self.time)), b)
+                            * np.ones(self.bf.shape, bool)
+                        ).ravel()
+                    )
+                    for b in self.bad_frames
+                ]
+            ).T
+            self.A = sparse.hstack([A1, badA])
+        else:
+            self.A = A1
         prior_sigma = np.ones(self.A.shape[1]) * 100
+        sigma_w_inv = self.A.T.dot(self.A) + np.diag(1 / prior_sigma ** 2)
+        B = self.A.T.dot(self.bf.ravel())
+        self.w = np.linalg.solve(sigma_w_inv, B)
 
-        self.sigma_w_inv = self.A[self.mask].T.dot(self.A[self.mask]) + np.diag(
-            1 / prior_sigma ** 2
-        )
-        Bs = (
-            self.A[self.mask].T.dot((f)[:, self.mask].T)
-            + (prior_mu / prior_sigma ** 2).T
-        )
-        self.ws = np.linalg.solve(self.sigma_w_inv, Bs)
-        self._model_row = self.row
-        self._model_column = self.column
-        self._model_A = self.A
+        self._model = self.A.dot(self.w).reshape(self.bf.shape)
+        self.model = self._model[np.unique(self.row, return_inverse=True)[1]].T
 
     @staticmethod
     def from_mission_bkg(fname):
@@ -71,37 +88,6 @@ class Estimator:
         )
         return self
 
-    def model(self, index=None, row=None, column=None):
-        """returns the background model
-
-        Parameters
-        ----------
-        index : int
-            Index to provide model. If None, will model at all provided cadences.
-        row: np.ndarray
-            The row to provide the model at. Must be 1D. If none, will use the training dataset.
-        column: np.ndarray
-            The column to provide the model at. Must be 1D. If none, will use the training dataset.
-
-        Returns
-        -------
-        model: np.ndarray
-            The model flux. 2D array with shape nindex x npixels.
-        """
-        if index is None:
-            index = np.arange(self.shape[0])
-        index = np.atleast_1d(index)
-        if row is not None:
-            if (self._model_row is None) | np.atleast_1d(
-                ((self._model_row != row) | (self._model_column != column))
-            ).any():
-                self._model_row = row
-                self._model_column = column
-                self._model_A = self._make_A(row, column)
-            return np.atleast_2d(self._model_A.dot(self.ws[:, index])).T
-        else:
-            return np.atleast_2d(self.A.dot(self.ws[:, index])).T
-
     def __repr__(self):
         return "KBackground.Estimator"
 
@@ -109,7 +95,7 @@ class Estimator:
     def shape(self):
         return self.flux.shape
 
-    def _make_A(self, x, y):
+    def _make_A(self, x, t):
         """Makes a reasonable design matrix for the rolling band."""
         x_spline = sparse.csr_matrix(
             np.asarray(
@@ -120,17 +106,21 @@ class Estimator:
             )
         )[1:-1]
 
-        y_spline = sparse.csr_matrix(
+        t_spline = sparse.csr_matrix(
             np.asarray(
                 dmatrix(
                     "bs(x, knots=knots, degree=3, include_intercept=True)",
-                    {"x": np.hstack([0, list(y), 1400]), "knots": self.yknots},
+                    {"x": t, "knots": self.tknots},
                 )
             )
-        )[1:-1]
-        X = sparse.hstack(
-            [x_spline.multiply(y_spline[:, idx]) for idx in range(y_spline.shape[1])],
-            format="csr",
         )
-
-        return X
+        s = x_spline.shape[0] * t_spline.shape[0]
+        A1 = sparse.hstack(
+            [
+                x_spline[:, idx].multiply(t_spline[:, jdx].T).reshape((s, 1))
+                for idx in range(x_spline.shape[1])
+                for jdx in range(t_spline.shape[1])
+            ],
+            "csr",
+        )
+        return A1
