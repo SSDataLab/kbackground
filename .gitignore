@@ -3,5 +3,5 @@ __pycache__/
 .pytest_cache/
 site/
 dist/
-DS_Store
+.DS_Store
 .ipynb_checkpoints/

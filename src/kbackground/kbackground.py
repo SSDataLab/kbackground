@@ -5,6 +5,7 @@ from astropy.io import fits
 from astropy.stats import sigma_clip
 from patsy import dmatrix
 from scipy import sparse
+import matplotlib.pyplot as plt
 
 
 @dataclass
@@ -106,6 +107,42 @@ class Estimator:
     @property
     def shape(self):
         return self.flux.shape
+
+    def plot(self):
+        with plt.style.context("seaborn-white"):
+            b = np.where(np.diff(self.unq_row) != 1)[0] + 1
+            rs = np.array_split(self.unq_row, b)
+            bfs = np.array_split(self.bf, b)
+            mods = np.array_split(self._model, b)
+            v = np.nanpercentile(self.bf, (5, 95))
+            fig, axs = plt.subplots(1, 2, figsize=(12, 4), sharex=True, sharey=True)
+
+            for r, bf, mod in zip(rs, bfs, mods):
+                im1 = axs[0].pcolormesh(
+                    self.time,
+                    r,
+                    bf,
+                    vmin=v[0],
+                    vmax=v[1],
+                    cmap="coolwarm",
+                )
+                im2 = axs[1].pcolormesh(
+                    self.time,
+                    r,
+                    mod,
+                    vmin=v[0],
+                    vmax=v[1],
+                    cmap="coolwarm",
+                )
+            cbar1 = plt.colorbar(im1, ax=axs[0], orientation="horizontal")
+            cbar1.set_label("$\delta$ Flux [counts]")
+            cbar2 = plt.colorbar(im2, ax=axs[1], orientation="horizontal")
+            cbar2.set_label("$\delta$ Flux [counts]")
+            axs[0].set(
+                title="Column-wise Binned Flux Data", xlabel="Time", ylabel="Row"
+            )
+            axs[1].set(title="Column-wise Binned Model", xlabel="Time", ylabel="Row")
+        return fig
 
     def _make_A(self, x, t):
         """Makes a reasonable design matrix for the rolling band."""
