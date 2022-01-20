@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
 from astropy.stats import sigma_clip
 from patsy import dmatrix
 from scipy import sparse
-import matplotlib.pyplot as plt
 
 
 @dataclass
@@ -135,9 +135,9 @@ class Estimator:
                     cmap="coolwarm",
                 )
             cbar1 = plt.colorbar(im1, ax=axs[0], orientation="horizontal")
-            cbar1.set_label("$\delta$ Flux [counts]")
+            cbar1.set_label(r"$\delta$ Flux [counts]")
             cbar2 = plt.colorbar(im2, ax=axs[1], orientation="horizontal")
-            cbar2.set_label("$\delta$ Flux [counts]")
+            cbar2.set_label(r"$\delta$ Flux [counts]")
             axs[0].set(
                 title="Column-wise Binned Flux Data", xlabel="Time", ylabel="Row"
             )
