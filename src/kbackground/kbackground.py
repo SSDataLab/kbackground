@@ -79,13 +79,14 @@ class Estimator:
                 ]
             )
         log.debug("Binned flux data")
+        log.debug(f"`bf` {self.bf.shape}")
         log.debug("Making A")
         A1 = self._make_A(self.unq_row, self.time)
         log.debug("Made A")
         self.bad_frames = (
             np.where(
                 sigma_clip(
-                    np.diff(np.mean(self.bf, axis=0)), sigma_upper=1, sigma_lower=np.inf
+                    np.diff(np.mean(self.bf, axis=0)), sigma_upper=2, sigma_lower=np.inf
                 ).mask
             )[0]
             + 1
@@ -93,6 +94,7 @@ class Estimator:
         log.debug(f"{len(self.bad_frames)}/{len(self.time)} bad frames")
 
         if len(self.bad_frames) > 0:
+            log.debug("Building bad frame offsets")
             badA = sparse.vstack(
                 [
                     sparse.csr_matrix(
