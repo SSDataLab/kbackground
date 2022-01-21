@@ -88,7 +88,7 @@ class Estimator:
                 sigma_clip(
                     np.diff(np.nanmean(self.bf, axis=0)),
                     sigma_upper=3,
-                    sigma_lower=np.inf,
+                    sigma_lower=1e8,
                 ).mask
             )[0]
             + 1
