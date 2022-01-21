@@ -86,7 +86,9 @@ class Estimator:
         self.bad_frames = (
             np.where(
                 sigma_clip(
-                    np.diff(np.mean(self.bf, axis=0)), sigma_upper=2, sigma_lower=np.inf
+                    np.diff(np.nanmean(self.bf, axis=0)),
+                    sigma_upper=2,
+                    sigma_lower=np.inf,
                 ).mask
             )[0]
             + 1
@@ -154,7 +156,7 @@ class Estimator:
             bfs = np.array_split(self.bf, b)
             mods = np.array_split(self._model, b)
             v = np.nanpercentile(self.bf, (5, 95))
-            fig, axs = plt.subplots(1, 2, figsize=(12, 4), sharex=True, sharey=True)
+            fig, axs = plt.subplots(1, 3, figsize=(15, 3.5))
 
             for r, bf, mod in zip(rs, bfs, mods):
                 im1 = axs[0].pcolormesh(
@@ -181,6 +183,18 @@ class Estimator:
                 title="Column-wise Binned Flux Data", xlabel="Time", ylabel="Row"
             )
             axs[1].set(title="Column-wise Binned Model", xlabel="Time", ylabel="Row")
+
+            axs[2].plot(self.time, np.nanmean(self.bf, axis=0), c="k", label="Data")
+            axs[2].scatter(
+                self.time[self.bad_frames],
+                np.nanmean(self.bf, axis=0)[self.bad_frames],
+                marker="x",
+                c="r",
+                label="Bad Frames",
+            )
+            axs[2].legend()
+            axs[2].set(xlabel="Time", ylabel="Average Flux")
+
         return fig
 
     def _make_A(self, x, t):
