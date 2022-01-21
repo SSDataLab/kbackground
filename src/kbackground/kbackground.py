@@ -1,6 +1,7 @@
 import logging
 import warnings
 from dataclasses import dataclass
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,6 +32,8 @@ class Estimator:
         Spacing in cadences between time knots. Default is 10
     xknotspacing: int
         Spacing in pixels between row knots. Default is 20
+    mask: Optional np.ndarray
+        Mask which is `True` where pixels are "faint" background pixels, `False` where pixels contain sources.
     """
 
     time: np.ndarray
@@ -39,6 +42,7 @@ class Estimator:
     flux: np.ndarray
     tknotspacing: int = 10
     xknotspacing: int = 20
+    mask: Optional[np.ndarray] = None
 
     def __post_init__(self):
         log.debug(
@@ -56,14 +60,15 @@ class Estimator:
         time_corr = np.nanpercentile(self.flux, 20, axis=1)[:, None]
         med_flux = np.median(self.flux - time_corr, axis=0)[None, :]
         f = self.flux - med_flux
-        # Mask out pixels that are particularly bright.
-        self.mask = (f - time_corr).std(axis=0) < 500
-        if not self.mask.any():
-            raise ValueError("All the input pixels are brighter than 500 counts.")
-        self.mask &= (f - time_corr).std(axis=0) < 30
-        # self.mask=(med_flux[0] - np.percentile(med_flux, 20)) < 30
-        self.mask &= ~sigma_clip(med_flux[0]).mask
-        self.mask &= ~sigma_clip(np.std(f - time_corr, axis=0)).mask
+        if self.mask is None:
+            # Mask out pixels that are particularly bright.
+            self.mask = (f - time_corr).std(axis=0) < 500
+            if not self.mask.any():
+                raise ValueError("All the input pixels are brighter than 500 counts.")
+            self.mask &= (f - time_corr).std(axis=0) < 30
+            # self.mask=(med_flux[0] - np.percentile(med_flux, 20)) < 30
+            self.mask &= ~sigma_clip(med_flux[0]).mask
+            self.mask &= ~sigma_clip(np.std(f - time_corr, axis=0)).mask
         self.unq_row = np.unique(self.row)
         log.debug(
             f"unq_row : {self.unq_row.min()} ... {self.unq_row.max()} ({len(self.unq_row)} unique rows)"
@@ -74,7 +79,7 @@ class Estimator:
             warnings.simplefilter("ignore")
             self.bf = np.asarray(
                 [
-                    np.mean(f[:, self.mask & (self.row == r1)], axis=1)
+                    np.median(f[:, self.mask & (self.row == r1)], axis=1)
                     for r1 in self.unq_row
                 ]
             )
@@ -130,6 +135,7 @@ class Estimator:
         self.model = np.zeros((self.flux.shape)) * np.nan
         for idx, u in enumerate(self.unq_row):
             self.model[:, self.row == u] = self._model[idx][:, None]
+        self.model -= np.median(self.model)
         log.debug("Built")
 
     @staticmethod
@@ -166,6 +172,7 @@ class Estimator:
                     vmin=v[0],
                     vmax=v[1],
                     cmap="coolwarm",
+                    rasterized=True,
                 )
                 im2 = axs[1].pcolormesh(
                     self.time,
@@ -174,6 +181,7 @@ class Estimator:
                     vmin=v[0],
                     vmax=v[1],
                     cmap="coolwarm",
+                    rasterized=True,
                 )
             cbar1 = plt.colorbar(im1, ax=axs[0], orientation="horizontal")
             cbar1.set_label(r"$\delta$ Flux [counts]")
@@ -184,13 +192,20 @@ class Estimator:
             )
             axs[1].set(title="Column-wise Binned Model", xlabel="Time", ylabel="Row")
 
-            axs[2].plot(self.time, np.nanmean(self.bf, axis=0), c="k", label="Data")
+            axs[2].plot(
+                self.time,
+                np.nanmean(self.bf, axis=0),
+                c="k",
+                label="Data",
+                rasterized=True,
+            )
             axs[2].scatter(
                 self.time[self.bad_frames],
                 np.nanmean(self.bf, axis=0)[self.bad_frames],
                 marker="x",
                 c="r",
                 label="Bad Frames",
+                rasterized=True,
             )
             axs[2].legend()
             axs[2].set(xlabel="Time", ylabel="Average Flux")
