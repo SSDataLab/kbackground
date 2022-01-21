@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ from astropy.io import fits
 from astropy.stats import sigma_clip
 from patsy import dmatrix
 from scipy import sparse
+from scipy.sparse.linalg import spsolve
 
 
 @dataclass
@@ -24,9 +26,9 @@ class Estimator:
     flux : np.ndarray
         2D array of fluxes with shape ntimes x npixels
     tknotspacing: int
-        Spacing in cadences between time knots. Default is 15
+        Spacing in cadences between time knots. Default is 10
     xknotspacing: int
-        Spacing in pixels between row knots. Default is 60
+        Spacing in pixels between row knots. Default is 20
     """
 
     time: np.ndarray
@@ -34,7 +36,7 @@ class Estimator:
     column: np.ndarray
     flux: np.ndarray
     tknotspacing: int = 10
-    xknotspacing: int = 50
+    xknotspacing: int = 20
 
     def __post_init__(self):
         s = np.argsort(self.time)
@@ -45,27 +47,37 @@ class Estimator:
             self.tknots = np.arange(self.time[0], self.time[-1], self.tknotspacing / 48)
         else:
             self.tknots = np.arange(self.time[0], self.time[-1], self.tknotspacing)
-        med_flux = np.median(self.flux, axis=0)[None, :]
+        time_corr = np.nanpercentile(self.flux, 20, axis=1)[:, None]
+        med_flux = np.median(self.flux - time_corr, axis=0)[None, :]
         f = self.flux - med_flux
         # Mask out pixels that are particularly bright.
-        self.mask = (f).std(axis=0) < 500
+        self.mask = (f - time_corr).std(axis=0) < 500
         if not self.mask.any():
             raise ValueError("All the input pixels are brighter than 500 counts.")
-        self.mask &= (f).std(axis=0) < 30
+        self.mask &= (f - time_corr).std(axis=0) < 30
         # self.mask=(med_flux[0] - np.percentile(med_flux, 20)) < 30
         self.mask &= ~sigma_clip(med_flux[0]).mask
-        self.mask &= ~sigma_clip(np.std(f, axis=0)).mask
-        self.unq_row = np.unique(self.row[self.mask])
-        self.bf = np.asarray(
-            [
-                np.median(f[:, self.mask & (self.row == r1)], axis=1)
-                for r1 in self.unq_row
-            ]
-        )
+        self.mask &= ~sigma_clip(np.std(f - time_corr, axis=0)).mask
+        self.unq_row = np.unique(self.row)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.bf = np.asarray(
+                [
+                    np.mean(f[:, self.mask & (self.row == r1)], axis=1)
+                    for r1 in self.unq_row
+                ]
+            )
         A1 = self._make_A(self.unq_row, self.time)
+
         self.bad_frames = (
-            np.where(np.gradient(np.mean(self.bf, axis=0), axis=0) > 2)[0] + 1
+            np.where(
+                sigma_clip(
+                    np.diff(np.mean(self.bf, axis=0)), sigma_upper=1, sigma_lower=np.inf
+                ).mask
+            )[0]
+            + 1
         )
+
         if len(self.bad_frames) > 0:
             badA = sparse.vstack(
                 [
@@ -78,13 +90,14 @@ class Estimator:
                     for b in self.bad_frames
                 ]
             ).T
-            self.A = sparse.hstack([A1, badA])
+            self.A = sparse.hstack([A1, badA], "csr")
         else:
-            self.A = A1
+            self.A = A1.tocsr()
         prior_sigma = np.ones(self.A.shape[1]) * 100
-        sigma_w_inv = self.A.T.dot(self.A) + np.diag(1 / prior_sigma ** 2)
-        B = self.A.T.dot(self.bf.ravel())
-        self.w = np.linalg.solve(sigma_w_inv, B)
+        k = np.isfinite(self.bf.ravel())
+        sigma_w_inv = self.A[k].T.dot(self.A[k]) + sparse.diags(1 / prior_sigma ** 2)
+        B = self.A[k].T.dot(self.bf.ravel()[k])
+        self.w = spsolve(sigma_w_inv, B)
 
         self._model = self.A.dot(self.w).reshape(self.bf.shape)
         self.model = np.zeros((self.flux.shape)) * np.nan
@@ -163,13 +176,12 @@ class Estimator:
                 )
             )
         )
-        s = x_spline.shape[0] * t_spline.shape[0]
-        A1 = sparse.hstack(
-            [
-                x_spline[:, idx].multiply(t_spline[:, jdx].T).reshape((s, 1))
-                for idx in range(x_spline.shape[1])
-                for jdx in range(t_spline.shape[1])
-            ],
-            "csr",
+        X = (
+            sparse.hstack([x_spline] * t_spline.shape[0])
+            .reshape((x_spline.shape[0] * t_spline.shape[0], x_spline.shape[1]))
+            .tocsr()
         )
+        T = sparse.vstack([t_spline] * x_spline.shape[0])
+        A1 = sparse.hstack([X[:, idx].multiply(T) for idx in range(X.shape[1])])
+
         return A1
