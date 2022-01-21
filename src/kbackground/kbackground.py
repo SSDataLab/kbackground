@@ -90,7 +90,7 @@ class Estimator:
             )[0]
             + 1
         )
-        log.debug(f"{self.bad_frames.sum()}/{len(self.time)} bad frames")
+        log.debug(f"{len(self.bad_frames)}/{len(self.time)} bad frames")
 
         if len(self.bad_frames) > 0:
             badA = sparse.vstack(
