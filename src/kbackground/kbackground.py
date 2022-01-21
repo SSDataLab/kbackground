@@ -1,3 +1,4 @@
+import logging
 import warnings
 from dataclasses import dataclass
 
@@ -7,6 +8,8 @@ from astropy.io import fits
 from astropy.stats import sigma_clip
 from patsy import dmatrix
 from scipy import sparse
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -38,6 +41,10 @@ class Estimator:
     xknotspacing: int = 20
 
     def __post_init__(self):
+        log.debug(
+            f"new `kbackground` Object. tknotspacing:{self.tknotspacing}, xknotspacing:{self.tknotspacing}"
+        )
+        log.debug(f"ntimes x npixels : {self.flux.shape}")
         s = np.argsort(self.time)
         self.time, self.flux = self.time[s], self.flux[s]
         self.xknots = np.arange(20, 1108, self.xknotspacing)
@@ -58,6 +65,11 @@ class Estimator:
         self.mask &= ~sigma_clip(med_flux[0]).mask
         self.mask &= ~sigma_clip(np.std(f - time_corr, axis=0)).mask
         self.unq_row = np.unique(self.row)
+        log.debug(
+            f"unq_row : {self.unq_row.min()} ... {self.unq_row.max()} ({len(self.unq_row)} unique rows)"
+        )
+        log.debug("Binning flux data")
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self.bf = np.asarray(
@@ -66,8 +78,10 @@ class Estimator:
                     for r1 in self.unq_row
                 ]
             )
+        log.debug("Binned flux data")
+        log.debug("Making A")
         A1 = self._make_A(self.unq_row, self.time)
-
+        log.debug("Made A")
         self.bad_frames = (
             np.where(
                 sigma_clip(
@@ -76,6 +90,7 @@ class Estimator:
             )[0]
             + 1
         )
+        log.debug(f"{self.bad_frames.sum()}/{len(self.time)} bad frames")
 
         if len(self.bad_frames) > 0:
             badA = sparse.vstack(
@@ -89,19 +104,29 @@ class Estimator:
                     for b in self.bad_frames
                 ]
             ).T
+            log.debug("Appending bad frame offsets")
             self.A = sparse.hstack([A1, badA], "csr")
+            log.debug("Appended bad frame offsets")
         else:
             self.A = A1.tocsr()
         prior_sigma = np.ones(self.A.shape[1]) * 100
         k = np.isfinite(self.bf.ravel())
+        log.debug("Creating `sigma_w_inv`")
         sigma_w_inv = self.A[k].T.dot(self.A[k]) + np.diag(1 / prior_sigma ** 2)
+        log.debug("Created `sigma_w_inv`")
+        log.debug("Creating `B`")
         B = self.A[k].T.dot(self.bf.ravel()[k])
+        log.debug("Created `B`")
+        log.debug("Solving for `w`")
         self.w = np.linalg.solve(sigma_w_inv, B)
+        log.debug("Solved for `w`")
 
         self._model = self.A.dot(self.w).reshape(self.bf.shape)
+        log.debug("Building full model")
         self.model = np.zeros((self.flux.shape)) * np.nan
         for idx, u in enumerate(self.unq_row):
             self.model[:, self.row == u] = self._model[idx][:, None]
+        log.debug("Built")
 
     @staticmethod
     def from_mission_bkg(fname):
@@ -166,7 +191,7 @@ class Estimator:
                 )
             )
         )[1:-1]
-
+        log.debug(f"Made `x_spline` {x_spline.shape}")
         t_spline = sparse.csr_matrix(
             np.asarray(
                 dmatrix(
@@ -175,13 +200,19 @@ class Estimator:
                 )
             )
         )
+        log.debug(f"Made `t_spline` {t_spline.shape}")
         X = (
             sparse.hstack([x_spline] * t_spline.shape[0])
             .reshape((x_spline.shape[0] * t_spline.shape[0], x_spline.shape[1]))
             .tocsr()
         )
+        log.debug(f"Made `X` {X.shape}")
         T = sparse.vstack([t_spline] * x_spline.shape[0])
-        A1 = sparse.hstack([X[:, idx].multiply(T) for idx in range(X.shape[1])]).tocsr()
+        log.debug(f"Made `T` {T.shape}")
+        A1 = sparse.hstack(
+            [X[:, idx].multiply(T) for idx in range(X.shape[1]) if X[:, idx].sum() != 0]
+        ).tocsr()
+        log.debug("Made `A1`")
         A1 = A1[:, np.asarray((A1.sum(axis=0) != 0))[0]]
-
+        log.debug("Cleaned `A1`")
         return A1
