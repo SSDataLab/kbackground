@@ -9,6 +9,7 @@ from astropy.io import fits
 from astropy.stats import sigma_clip
 from patsy import dmatrix
 from scipy import sparse
+from scipy.linalg import cho_factor, cho_solve
 
 log = logging.getLogger(__name__)
 
@@ -127,7 +128,8 @@ class Estimator:
         B = self.A[k].T.dot(self.bf.ravel()[k])
         log.debug("Created `B`")
         log.debug("Solving for `w`")
-        self.w = np.linalg.solve(sigma_w_inv, B)
+        # self.w = np.linalg.solve(sigma_w_inv, B)
+        self.w = cho_solve(cho_factor(sigma_w_inv), B)
         log.debug("Solved for `w`")
 
         self._model = self.A.dot(self.w).reshape(self.bf.shape)
