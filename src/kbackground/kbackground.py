@@ -191,6 +191,7 @@ class Estimator:
                 )
             )
         )[1:-1]
+        x_spline = x_spline[:, np.asarray((x_spline.sum(axis=0) != 0))[0]]
         log.debug(f"Made `x_spline` {x_spline.shape}")
         t_spline = sparse.csr_matrix(
             np.asarray(
@@ -200,6 +201,7 @@ class Estimator:
                 )
             )
         )
+        t_spline = t_spline[:, np.asarray((t_spline.sum(axis=0) != 0))[0]]
         log.debug(f"Made `t_spline` {t_spline.shape}")
         X = (
             sparse.hstack([x_spline] * t_spline.shape[0])
@@ -209,9 +211,7 @@ class Estimator:
         log.debug(f"Made `X` {X.shape}")
         T = sparse.vstack([t_spline] * x_spline.shape[0])
         log.debug(f"Made `T` {T.shape}")
-        A1 = sparse.hstack(
-            [X[:, idx].multiply(T) for idx in range(X.shape[1]) if X[:, idx].sum() != 0]
-        ).tocsr()
+        A1 = sparse.hstack([X[:, idx].multiply(T) for idx in range(X.shape[1])]).tocsr()
         log.debug("Made `A1`")
         A1 = A1[:, np.asarray((A1.sum(axis=0) != 0))[0]]
         log.debug("Cleaned `A1`")
