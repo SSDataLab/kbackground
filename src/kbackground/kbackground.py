@@ -7,7 +7,6 @@ from astropy.io import fits
 from astropy.stats import sigma_clip
 from patsy import dmatrix
 from scipy import sparse
-from scipy.sparse.linalg import spsolve
 
 
 @dataclass
@@ -95,9 +94,9 @@ class Estimator:
             self.A = A1.tocsr()
         prior_sigma = np.ones(self.A.shape[1]) * 100
         k = np.isfinite(self.bf.ravel())
-        sigma_w_inv = self.A[k].T.dot(self.A[k]) + sparse.diags(1 / prior_sigma ** 2)
+        sigma_w_inv = self.A[k].T.dot(self.A[k]) + np.diag(1 / prior_sigma ** 2)
         B = self.A[k].T.dot(self.bf.ravel()[k])
-        self.w = spsolve(sigma_w_inv, B)
+        self.w = np.linalg.solve(sigma_w_inv, B)
 
         self._model = self.A.dot(self.w).reshape(self.bf.shape)
         self.model = np.zeros((self.flux.shape)) * np.nan
@@ -182,6 +181,7 @@ class Estimator:
             .tocsr()
         )
         T = sparse.vstack([t_spline] * x_spline.shape[0])
-        A1 = sparse.hstack([X[:, idx].multiply(T) for idx in range(X.shape[1])])
+        A1 = sparse.hstack([X[:, idx].multiply(T) for idx in range(X.shape[1])]).tocsr()
+        A1 = A1[:, np.asarray((A1.sum(axis=0) != 0))[0]]
 
         return A1
