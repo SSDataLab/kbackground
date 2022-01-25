@@ -41,8 +41,8 @@ class Estimator:
     row: np.ndarray
     column: np.ndarray
     flux: np.ndarray
-    tknotspacing: int = 5
-    xknotspacing: int = 10
+    tknotspacing: int = 4
+    xknotspacing: int = 6
     mask: Optional[np.ndarray] = None
 
     def __post_init__(self):
@@ -52,12 +52,16 @@ class Estimator:
         log.info(f"ntimes x npixels : {self.flux.shape}")
         s = np.argsort(self.time)
         self.time, self.flux = self.time[s], self.flux[s]
-        self.xknots = np.arange(20, 1108, self.xknotspacing)
+        self.xknots = np.arange(20, 1108, self.xknotspacing) + 0.5
         if np.median(np.diff(self.time)) < 0.03:
             # Time in JD
-            self.tknots = np.arange(self.time[0], self.time[-1], self.tknotspacing / 48)
+            self.tknots = np.arange(
+                self.time[0], self.time[-1], self.tknotspacing / 48
+            ) + 0.5 * (self.tknotspacing / 48)
         else:
-            self.tknots = np.arange(self.time[0], self.time[-1], self.tknotspacing)
+            self.tknots = (
+                np.arange(self.time[0], self.time[-1], self.tknotspacing) + 0.5
+            )
         time_corr = np.nanpercentile(self.flux, 20, axis=1)[:, None]
         med_flux = np.median(self.flux - time_corr, axis=0)[None, :]
 
