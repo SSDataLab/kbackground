@@ -273,13 +273,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#kbackground.kbackground.Estimator.model" class="md-nav__link">
-    model()
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -317,13 +310,6 @@
         <li class="md-nav__item">
   <a href="#kbackground.kbackground.Estimator" class="md-nav__link">
     kbackground.kbackground.Estimator
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#kbackground.kbackground.Estimator.model" class="md-nav__link">
-    model()
   </a>
   
 </li>
@@ -367,6 +353,12 @@
   </thead>
   <tbody>
       <tr>
+        <td><code>time</code></td>
+        <td><code>np.ndarray</code></td>
+        <td><p>1D array of times for each frame, shape ntimes</p></td>
+        <td><em>required</em></td>
+      </tr>
+      <tr>
         <td><code>row</code></td>
         <td><code>np.ndarray</code></td>
         <td><p>1D array of row positions for pixels to calculate the background model of with shape npixels</p></td>
@@ -382,6 +374,24 @@
         <td><code>flux</code></td>
         <td><code>np.ndarray</code></td>
         <td><p>2D array of fluxes with shape ntimes x npixels</p></td>
+        <td><em>required</em></td>
+      </tr>
+      <tr>
+        <td><code>tknotspacing</code></td>
+        <td><code>int</code></td>
+        <td><p>Spacing in cadences between time knots. Default is 10</p></td>
+        <td><code>&#39;10&#39;</code></td>
+      </tr>
+      <tr>
+        <td><code>xknotspacing</code></td>
+        <td><code>int</code></td>
+        <td><p>Spacing in pixels between row knots. Default is 20</p></td>
+        <td><code>&#39;20&#39;</code></td>
+      </tr>
+      <tr>
+        <td><code>mask</code></td>
+        <td><code>Optional np.ndarray</code></td>
+        <td><p>Mask which is <code>True</code> where pixels are "faint" background pixels, <code>False</code> where pixels contain sources.</p></td>
         <td><em>required</em></td>
       </tr>
   </tbody>
@@ -408,69 +418,8 @@
 
 
 
-  <div class="doc doc-object doc-method">
 
 
-
-<h2 id="kbackground.kbackground.Estimator.model" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">column</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
-
-
-</h2>
-
-    <div class="doc doc-contents ">
-
-      <p>returns the background model</p>
-
-<p><strong>Parameters:</strong></p>
-<table>
-  <thead>
-    <tr>
-      <th>Name</th>
-      <th>Type</th>
-      <th>Description</th>
-      <th>Default</th>
-    </tr>
-  </thead>
-  <tbody>
-      <tr>
-        <td><code>index</code></td>
-        <td><code>int</code></td>
-        <td><p>Index to provide model. If None, will model at all provided cadences.</p></td>
-        <td><code>None</code></td>
-      </tr>
-      <tr>
-        <td><code>row</code></td>
-        <td><code>np.ndarray</code></td>
-        <td><p>The row to provide the model at. Must be 1D. If none, will use the training dataset.</p></td>
-        <td><code>None</code></td>
-      </tr>
-      <tr>
-        <td><code>column</code></td>
-        <td><code>np.ndarray</code></td>
-        <td><p>The column to provide the model at. Must be 1D. If none, will use the training dataset.</p></td>
-        <td><code>None</code></td>
-      </tr>
-  </tbody>
-</table>
-<p><strong>Returns:</strong></p>
-<table>
-  <thead>
-    <tr>
-      <th>Type</th>
-      <th>Description</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><code>np.ndarray</code></td>
-      <td><p>The model flux. 2D array with shape nindex x npixels.</p></td>
-    </tr>
-  </tbody>
-</table>
-    </div>
-
-  </div>
 
 
 
