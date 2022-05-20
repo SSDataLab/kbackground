@@ -62,6 +62,10 @@ class Estimator:
             self.tknots = (
                 np.arange(self.time[0], self.time[-1], self.tknotspacing) + 0.5
             )
+
+        self.tknots = self.tknots[
+            (self.tknots < self.time.max()) & (self.tknots > self.time.min())
+        ]
         time_corr = np.nanpercentile(self.flux, 20, axis=1)[:, None]
         med_flux = np.median(self.flux - time_corr, axis=0)[None, :]
 
@@ -109,8 +113,8 @@ class Estimator:
 
         def get_masks(xlim1, xlim2):
             x = np.arange(xlim1, xlim2, self.tknotspacing * 30)
-            a = np.max([x ** 0 * xlim1 - self.tknotspacing * 5, x], axis=0)
-            b = np.min([x ** 0 * xlim2, x + self.tknotspacing * 35], axis=0)
+            a = np.max([x**0 * xlim1 - self.tknotspacing * 5, x], axis=0)
+            b = np.min([x**0 * xlim2, x + self.tknotspacing * 35], axis=0)
             masks = np.asarray(
                 [np.in1d(self.time, self.time[a1:b1]) for a1, b1 in np.vstack([a, b]).T]
             )
@@ -168,7 +172,7 @@ class Estimator:
             prior_sigma = np.ones(self.A.shape[1]) * 100
             k = np.isfinite(self.bf[:, tm].ravel())
             log.debug(f"{tdx + 1}/{len(time_masks)} Creating `sigma_w_inv`")
-            sigma_w_inv = self.A[k].T.dot(self.A[k]) + np.diag(1 / prior_sigma ** 2)
+            sigma_w_inv = self.A[k].T.dot(self.A[k]) + np.diag(1 / prior_sigma**2)
             log.debug(f"{tdx + 1}/{len(time_masks)} Created `sigma_w_inv`")
             log.debug(f"{tdx + 1}/{len(time_masks)} Creating `B`")
             B = self.A[k].T.dot(self.bf[:, tm].ravel()[k])
@@ -189,7 +193,7 @@ class Estimator:
         if len(self.bad_frames) != 0:
             self.bad_frames = np.hstack(self.bad_frames)
         self.model = self.model / self.weights
-        self.model -= np.median(self.model)
+        self.model -= np.nanmedian(self.model)
         log.debug("Built")
 
     @staticmethod
